@@ -1,0 +1,25 @@
+[project]
+name = "kavak-scraper"
+version = "0.1.0"
+description = ""
+authors = [
+    {name = "Your Name",email = "you@example.com"}
+]
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "requests (>=2.32.3,<3.0.0)",
+    "beautifulsoup4 (>=4.13.4,<5.0.0)",
+    "pydantic (>=2.11.4,<3.0.0)",
+    "playwright (>=1.52.0,<2.0.0)"
+]
+
+[project.scripts]
+scrap = "kavak_scraper.main:main"
+
+[tool.poetry]
+packages = [{include = "kavak_scraper", from = "src"}]
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
