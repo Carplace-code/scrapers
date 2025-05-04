@@ -1,9 +1,9 @@
 [project]
-name = "car-place-scrapers"
+name = "scrapers"
 version = "0.1.0"
 description = ""
 authors = [
-    {name = "Car Place",email = "a@mail.com"}
+    {name = "Car Place",email = "a@gmail.com"}
 ]
 readme = "README.md"
 requires-python = ">=3.10"
