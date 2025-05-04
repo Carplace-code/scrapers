@@ -1,0 +1,31 @@
+[project]
+name = "car-place-scrapers"
+version = "0.1.0"
+description = ""
+authors = [
+    {name = "Car Place",email = "a@mail.com"}
+]
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "playwright (>=1.52.0,<2.0.0)",
+    "pytest (>=8.3.5,<9.0.0)",
+    "beautifulsoup4 (>=4.13.4,<5.0.0)",
+    "pydantic (>=2.11.4,<3.0.0)",
+    "python-dotenv (>=1.1.0,<2.0.0)"
+]
+
+[tool.poetry]
+packages = [{include = "scrapers", from = "src"}]
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.pytest.ini_options]
+minversion = "2.0"
+addopts = "-rfEX -p pytester --strict-markers"
+python_files = [
+    "test_*.py",
+]
