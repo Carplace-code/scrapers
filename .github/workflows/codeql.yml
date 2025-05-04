@@ -3,13 +3,13 @@ name: "CodeQL Security Scan"
 on:
   push:
     branches: [ main ]
-    paths-ignore:
-      - poetry.lock
+    paths:
+      - '**/*.py'
 
   pull_request:
     branches: [ main ]
-    paths-ignore:
-      - poetry.lock
+    paths:  
+      - '**/*.py'
 
 
 
