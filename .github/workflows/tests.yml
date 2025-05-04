@@ -1,0 +1,45 @@
+# .github/workflows/tsets.yml
+
+# .github/workflows/ci.yml
+name: Tests
+
+on:
+  pull_request:
+    branches:
+      - "main"
+
+  push:
+    branches:
+      - "main"
+
+jobs:
+  test:
+    name: Run tests & display coverage
+    runs-on: ubuntu-latest
+    permissions:
+      # Gives the action the necessary permissions for publishing new
+      # comments in pull requests.
+      pull-requests: write
+      # Gives the action the necessary permissions for pushing data to the
+      # python-coverage-comment-action branch, and for editing existing
+      # comments (to avoid publishing multiple comments in the same PR)
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/install-env
+      - name: Run tests if any exist
+        run: |
+          if find ./tests -name 'test_*.py' | grep -q "."; then
+            echo "No files found, skipping tests."
+          else
+            poetry run coverage run ./tests/* -m pytest
+          fi
+
+      - name: Store Pull Request comment to be posted
+        uses: actions/upload-artifact@v4
+        if: steps.coverage_comment.outputs.COMMENT_FILE_WRITTEN == 'true'
+        with:
+          # If you use a different name, update COMMENT_ARTIFACT_NAME accordingly
+          name: python-coverage-comment-action
+          # If you use a different name, update COMMENT_FILENAME accordingly
+          path: python-coverage-comment-action.txt
