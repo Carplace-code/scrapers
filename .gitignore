@@ -3,3 +3,7 @@
 **/__pycache__
 **/.vscode
 .ruff_cache
+
+.DS_Store
+src/.DS_Store
+src/scrapers/.DS_Store
