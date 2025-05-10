@@ -1,0 +1,39 @@
+[project]
+name = "scrapers"
+version = "0.1.0"
+description = ""
+authors = [
+    {name = "Car Place", email = "a@gmail.com"}
+]
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "playwright>=1.52.0,<2.0.0",
+    "pytest>=8.3.5,<9.0.0",
+    "beautifulsoup4>=4.13.4,<5.0.0",
+    "pydantic>=2.11.4,<3.0.0",
+    "python-dotenv>=1.1.0,<2.0.0",
+    "coverage>=7.8.0,<8.0.0",
+    "pre-commit>=4.2.0,<5.0.0",
+    "ruff>=0.11.8,<0.12.0"
+]
+
+[tool.poetry]
+packages = [
+    {include = "scrapers", from = "src"},
+    {include = "scrapers/kavak", from = "src"}
+]
+
+[tool.poetry.scripts]
+kavak-scrap = "scrapers.kavak.main:main"  # Cambiado el nombre para evitar conflictos
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.pytest.ini_options]
+minversion = "2.0"
+addopts = "-rfEX -p pytester --strict-markers"
+python_files = [
+    "test_*.py",
+]

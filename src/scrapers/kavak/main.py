@@ -4,7 +4,7 @@ import time
 import random
 from pathlib import Path
 from playwright.sync_api import sync_playwright
-from kavak_scraper.models import Car
+from scrapers.kavak.models import Car
 
 # -------------------- Utilidades --------------------
 
@@ -125,7 +125,7 @@ def robust_scraper_attempt(p, proxy_config, max_retries=3):
         try:
             browser = p.chromium.launch(
                 headless=True,
-                proxy=proxy_config,
+                proxy = proxy_config,
                 args=["--ignore-certificate-errors"]
             )
             page = browser.new_page(
@@ -171,7 +171,6 @@ def main():
     with sync_playwright() as p:
         try:
             page, browser = robust_scraper_attempt(p, proxy_config)
-
             total_pages = get_total_pages(page)
             print(f"Total de páginas detectadas: {total_pages}")
         except Exception as e:
