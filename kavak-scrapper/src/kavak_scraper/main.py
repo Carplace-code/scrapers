@@ -1,9 +1,10 @@
 import re
 import json
+import time
+import random
 from pathlib import Path
 from playwright.sync_api import sync_playwright
 from kavak_scraper.models import Car
-
 
 # -------------------- Utilidades --------------------
 
@@ -13,7 +14,6 @@ def parse_price(text: str) -> int | None:
         return int(digits[0].replace(".", ""))
     return None
 
-
 def save_to_json(cars: list[Car], filename: str = "autos.json") -> None:
     data = [car.model_dump() for car in cars]
     Path(filename).write_text(
@@ -22,21 +22,29 @@ def save_to_json(cars: list[Car], filename: str = "autos.json") -> None:
     )
     print(f"\nSe guardaron {len(cars)} autos en {filename}")
 
-
 # -------------------- Scraping --------------------
 
 def get_total_pages(page) -> int:
-    pagination_xpath = "/html/body/div[1]/main/div/div[1]/section/article/div[4]/div"
-    page.wait_for_selector(f"xpath={pagination_xpath}", timeout=10000)
-    pagination_container = page.query_selector(f"xpath={pagination_xpath}")
+    try:
+        page.wait_for_selector(".results_results__pagination__yZaD_", timeout=100000)
+        pagination = page.query_selector(".results_results__pagination__yZaD_")
 
-    if pagination_container:
-        numbers = pagination_container.inner_text().split()
-        numeric_pages = [int(n) for n in numbers if n.isdigit()]
-        return max(numeric_pages) if numeric_pages else 1
+        if pagination:
+            page_links = pagination.query_selector_all("a")
+            numbers = []
 
-    return 1
+            for link in page_links:
+                text = link.inner_text().strip()
+                if text.isdigit():
+                    numbers.append(int(text))
 
+            if numbers:
+                return max(numbers)
+    except Exception as e:
+        print("Error al obtener el número total de páginas:", e)
+        page.screenshot(path="error_get_total_pages.png")
+
+    return 1  # Valor por defecto si falla
 
 def extract_cars_from_text(text: str) -> list[Car]:
     lines = [line.strip() for line in text.strip().split("\n") if line.strip()]
@@ -79,7 +87,6 @@ def extract_cars_from_text(text: str) -> list[Car]:
             price_original = parse_price(price_lines[1]) if len(price_lines) > 1 else None
             print(block)
 
-            # Obtiene ultimo elemnto de block que no contenga los siguientes textos
             location = next(
                 (
                     line for line in reversed(block)
@@ -110,35 +117,87 @@ def extract_cars_from_text(text: str) -> list[Car]:
 
     return parsed_cars
 
+# -------------------- Manejo de bloqueo --------------------
+
+def robust_scraper_attempt(p, proxy_config, max_retries=3):
+    for attempt in range(1, max_retries + 1):
+        print(f"\n[Intento {attempt}/{max_retries}] usando proxy...")
+        try:
+            browser = p.chromium.launch(
+                headless=True,
+                proxy=proxy_config,
+                args=["--ignore-certificate-errors"]
+            )
+            page = browser.new_page(
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
+                extra_http_headers={
+                    "Accept-Language": "es-ES,es;q=0.9",
+                    "Referer": "https://www.google.com/"
+                },
+                viewport={"width": 1280, "height": 800}
+            )
+
+            page.goto("https://www.kavak.com/cl/usados", timeout=100000)
+            page.mouse.wheel(0, 1000)
+            time.sleep(2)
+
+            content = page.content().lower()
+
+            if "request could not be satisfied" in content:
+                print("Página bloqueada, reintentando...")
+                page.screenshot(path=f"bloqueo_intento_{attempt}.png")
+                browser.close()
+                continue
+
+            return page, browser
+
+        except Exception as e:
+            print(f"Error al cargar la página (intento {attempt}):", e)
+
+    raise RuntimeError("No se pudo acceder al sitio tras múltiples intentos.")
 
 # -------------------- Ejecución principal --------------------
 
 def main():
     all_cars = []
 
+    session_id = random.randint(1000, 9999)
+    proxy_config = {
+        "server": "http://brd.superproxy.io:22225",
+        "username": f"brd-customer-hl_1bde1bb4-zone-residential_proxy1-session-{session_id}",
+        "password": "www0ye7kbgs9"
+    }
+
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
-        page = browser.new_page()
+        try:
+            page, browser = robust_scraper_attempt(p, proxy_config)
 
-        # Página inicial para conocer el total
-        page.goto("https://www.kavak.com/cl/usados", timeout=60000)
-        total_pages = get_total_pages(page)
-        print(f"Total de páginas detectadas: {total_pages}")
+            total_pages = get_total_pages(page)
+            print(f"Total de páginas detectadas: {total_pages}")
+        except Exception as e:
+            print("Error crítico:", e)
+            return
 
-        for page_num in range(1):
-            print(f"Scrapeando página {page_num}...")
-            url = f"https://www.kavak.com/cl/usados?page={page_num}"
-            page.goto(url, timeout=60000)
-            content_xpath = "/html/body/div[1]/main/div/div[1]/section/article/div[3]"
-            page.wait_for_selector(f"xpath={content_xpath}", timeout=10000)
+        for page_num in range(1):  # Cambiar por `range(total_pages)` si deseas scrapear todas
+            try:
+                print(f"Scrapeando página {page_num}...")
+                url = f"https://www.kavak.com/cl/usados?page={page_num}"
+                page.goto(url, timeout=120000)
+                content_selector = ".results_results__container__tcF4_"
+                page.wait_for_selector(content_selector, timeout=100000)
 
-            element = page.query_selector(f"xpath={content_xpath}")
-            if element:
-                raw_text = element.inner_text()
-                cars = extract_cars_from_text(raw_text)
-                all_cars.extend(cars)
-            else:
-                print(f"No se encontró el contenedor de autos en la página {page_num}.")
+                element = page.query_selector(content_selector)
+                if element:
+                    raw_text = element.inner_text()
+                    cars = extract_cars_from_text(raw_text)
+                    all_cars.extend(cars)
+                else:
+                    print(f"No se encontró el contenedor de autos en la página {page_num}.")
+                    page.screenshot(path=f"missing_container_page_{page_num}.png")
+
+            except Exception as e:
+                print(f"Error al procesar la página {page_num}:", e)
+                page.screenshot(path=f"error_page_{page_num}.png")
 
         browser.close()
 
@@ -146,7 +205,6 @@ def main():
         print(f"{car.brand} {car.model} - {car.price_actual:,} CLP")
 
     save_to_json(all_cars)
-
 
 if __name__ == "__main__":
     main()
