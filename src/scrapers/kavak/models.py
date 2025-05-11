@@ -1,4 +1,4 @@
-# src/kavak_scraper/models.py
+# src/scrapers/kavak/models.py
 from pydantic import BaseModel
 
 
