@@ -1,0 +1,76 @@
+name: Run Scraper
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 0 * * *"
+
+jobs:
+  run-scraper:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.11
+
+      - name: Cache Poetry dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cache/pypoetry
+            ~/.cache/pip
+          key: ${{ runner.os }}-poetry-${{ hashFiles('**/poetry.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-poetry-
+      
+      - name: Cache Playwright browsers
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('**/poetry.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-
+
+
+      - name: Install system dependencies for Playwright GUI
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            xvfb \
+            libnss3 \
+            libatk-bridge2.0-0 \
+            libxss1 \
+            libasound2t64 \
+            libgbm1 \
+            libgtk-3-0
+
+      - name: Start virtual display
+        run: |
+          Xvfb :99 &
+          echo "DISPLAY=:99" >> $GITHUB_ENV
+
+      - name: Install project dependencies
+        run: |
+          pip install poetry
+          poetry install
+
+      - name: Install Playwright and its dependencies
+        run: |
+          poetry run playwright install chromium
+
+      - name: Run scraper
+        run: |
+          poetry run kavak-scrap
+
+      - name: Upload artifacts (screenshots and JSON)
+        uses: actions/upload-artifact@v4
+        with:
+          name: scraper-output
+          path: |
+            *.png
+            autos.json
