@@ -65,7 +65,7 @@ jobs:
 
       - name: Run scraper
         run: |
-          poetry run scrap
+          poetry run kavak-scrap
 
       - name: Upload artifacts (screenshots and JSON)
         uses: actions/upload-artifact@v4
