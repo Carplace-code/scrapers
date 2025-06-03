@@ -24,6 +24,9 @@ dependencies = [
 [tool.poetry]
 packages = [{include = "scrapers", from = "src"}]
 
+[tool.poetry.scripts]
+
+yapo-scrap = "scrapers.yapo.main:main"  # Cambiado el nombre para evitar conflictos
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
