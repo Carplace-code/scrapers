@@ -156,38 +156,34 @@ def save_to_json(
             parsed_cars.append(car.model_dump())
         except KeyError:  # llave no encontrada
             continue
+    current_dir = os.path.dirname(os.path.abspath(__file__))
     with open(os.path.join(current_dir, output_path), "w", encoding="utf-8") as f:
         f.write(json.dumps(parsed_cars))
     print(f"Se guardaron {len(parsed_cars)} en {output_path}")
 
 
-if __name__ == "__main__":
+def main():
     try:
         base_url = "https://public-api.yapo.cl/autos-usados/region-metropolitana"
         default_url = "https://public-api.yapo.cl"
-        current_dir = os.path.dirname(os.path.abspath(__file__))
+
         n_pages = 1
         i1 = time.time()
         links_list = scrape_yapo(base_url, n_pages)
         i2 = time.time()
         print("numero de paginas: ", n_pages)
         print("tiempo de scrapeo por pagina: ", (i2 - i1) / n_pages)
-        with open(
-            os.path.join(current_dir, "link_list.json"), "w", encoding="utf-8"
-        ) as f:
-            f.write(json.dumps(links_list))
-
-        i1 = time.time()
+        i3 = time.time()
         car_dict_list = get_details(default_url, links_list)
-        i2 = time.time()
+        i4 = time.time()
         print(
-            "tiempo de obtener detalles publicaciones por pagina: ", (i2 - i1) / n_pages
+            "tiempo de obtener detalles publicaciones por pagina: ", (i4 - i3) / n_pages
         )
-        with open(
-            os.path.join(current_dir, "car_dict_list.json"), "w", encoding="utf-8"
-        ) as f:
-            f.write(json.dumps(car_dict_list))
         save_to_json(car_dict_list, links_list, default_url, "autos.json")
 
     except Exception as e:
         print(e)
+
+
+if __name__ == "__main__":
+    main()
