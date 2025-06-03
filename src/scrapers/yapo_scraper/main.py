@@ -4,7 +4,7 @@ import time
 import json
 from bs4 import BeautifulSoup
 from datetime import datetime
-from scrapers.yapo_scraper.model import Car
+from scrapers.models import Car
 import re
 
 
@@ -81,7 +81,6 @@ def get_details(base_url: str, links_list: list[tuple[str]]):
         for link in links_list:
             try:
                 attr_dict = dict()
-                print(base_url + link[0])
                 page.goto(base_url + link[0])
                 page.wait_for_load_state("domcontentloaded")
                 time.sleep(1)
@@ -94,7 +93,6 @@ def get_details(base_url: str, links_list: list[tuple[str]]):
                 keys = "Marca Modelo Precio Año Kilómetros Combustible".split(" ")
                 for e in car_data:
                     dat = e.get_text().split()
-                    print(dat)
                     result = {}
                     i = 0
                     while i < len(dat):
@@ -108,7 +106,6 @@ def get_details(base_url: str, links_list: list[tuple[str]]):
                             result[key] = " ".join(value_parts)
                         else:
                             i += 1
-                    print(result)
                     attr_dict.update(result)
 
                 # datos adicionales en la descripción del auto
