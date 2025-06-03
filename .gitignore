@@ -3,7 +3,8 @@
 **/__pycache__
 **/.vscode
 .ruff_cache
-
+*.json
+poetry.lock
 .DS_Store
 src/.DS_Store
 src/scrapers/.DS_Store
