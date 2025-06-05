@@ -27,6 +27,12 @@ runs:
       with:
         path: ~/.local
         key: dotlocal-${{ runner.os }}-${{ hashFiles('.github/actions/install-env/action.yml') }}-${{ steps.setup-python.outputs.python-version }}
+    
+    - name: Cache Playwright browsers
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/ms-playwright
+        key: playwright-${{ runner.os }}-${{ hashFiles('poetry.lock') }}
 
     - name: Install Python poetry
       uses: snok/install-poetry@v1
@@ -42,6 +48,16 @@ runs:
       if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
       run: poetry install --no-interaction
 
+    - name: Install pytest-playwright via pip
+      shell: bash
+      run: |
+        source .venv/bin/activate
+        pip install pytest-playwright
+
+    - name: Install Playwright browsers
+      shell: bash
+      run: poetry run playwright install chromium
+    
     - name: Activate environment
       shell: bash
       run: source .venv/bin/activate
