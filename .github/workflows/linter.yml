@@ -1,10 +1,5 @@
 name: Ruff Linter
 on:
-  push:
-    branches: [ main ]
-    paths-ignore:
-      - poetry.lock
-
   pull_request:
     branches: [ main ]
     paths-ignore:

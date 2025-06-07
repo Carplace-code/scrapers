@@ -6,13 +6,6 @@ on:
     paths-ignore:
       - poetry.lock
 
-  pull_request:
-    branches: [ main ]
-    paths-ignore:
-      - poetry.lock
-
-
-
 jobs:
   analyze:
     name: Analyze code with CodeQL
