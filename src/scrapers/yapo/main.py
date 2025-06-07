@@ -1,4 +1,7 @@
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import (
+    sync_playwright,
+    TimeoutError as PlaywrightTimeoutError,
+)
 import os
 import time
 import json
@@ -6,6 +9,8 @@ from bs4 import BeautifulSoup
 from datetime import datetime
 from scrapers.models import Car
 import re
+
+retries = 3
 
 
 # obtener los pares de (post_url, img_url) para irlos explorando despues
@@ -27,14 +32,23 @@ def scrape_yapo(base_url: str, pages: int):
             },
         )
         page = context.new_page()
-        page.goto(base_url)
-        page.wait_for_load_state("domcontentloaded")
-        time.sleep(2)
+        for attempt in range(retries):
+            try:
+                page.goto(base_url, wait_until="domcontentloaded")
+                print(f"Conectandose a {base_url}")
+                break
+            except PlaywrightTimeoutError:
+                print(f"Intento {attempt}/{retries} de conectar a la url falló")
+                continue
+            except Exception as e:
+                print(f"Error inesperado en el intento {attempt}: {e}")
+
         for page_number in range(1, pages + 1):
             print(f"Cargando pagina {page_number}")
             try:
                 myUrl = f"{base_url}.{page_number}"
-                page.goto(myUrl)
+                page.goto(myUrl, timeout=10000, wait_until="domcontentloaded")
+
                 car_listing_class = "d3-ad-tile d3-ads-grid__item d3-ad-tile--fullwidth d3-ad-tile--bordered d3-ad-tile--feat d3-ad-tile--feat-plat"
                 car_list_locator = page.locator(f'div[class="{car_listing_class}"]')
                 links_locator = car_list_locator.locator(
@@ -53,8 +67,9 @@ def scrape_yapo(base_url: str, pages: int):
                 for url in links_list:
                     car_listing_links.append(tuple(url))
 
-                time.sleep(1)
-            except Exception:
+                time.sleep(0.5)
+            except Exception as e:
+                print(e)
                 continue
         browser.close()
         return car_listing_links
@@ -62,6 +77,7 @@ def scrape_yapo(base_url: str, pages: int):
 
 # ir a todas las publicaciones de a una para obtener todos los detalles
 def get_details(base_url: str, links_list: list[tuple[str]]):
+    print("Obteniendo detalle de las publicaciones")
     with sync_playwright() as p:
         browser = p.chromium.launch(
             headless=True,
@@ -74,16 +90,27 @@ def get_details(base_url: str, links_list: list[tuple[str]]):
             permissions=[],
         )
         page = context.new_page()
-        page.goto(base_url)
-        page.wait_for_load_state("domcontentloaded")
-        time.sleep(1)
+        print(f"Conectandose a {base_url}")
+        for attempt in range(retries):
+            try:
+                page.goto(base_url, wait_until="domcontentloaded")
+                break
+            except PlaywrightTimeoutError:
+                print(f"Intento {attempt}/{retries} de conectar a la url falló")
+                continue
+            except Exception as e:
+                print(f"Error inesperado en el intento {attempt}: {e}")
+
+        time.sleep(2)
         dict_list = list()
-        for link in links_list:
+        print(f"Cargando publicaciones ({len(links_list)} en total)")
+        for post_url, img_url in links_list:
             try:
                 attr_dict = dict()
-                page.goto(base_url + link[0])
-                page.wait_for_load_state("domcontentloaded")
-                time.sleep(1)
+                page.goto(
+                    base_url + post_url, timeout=10000, wait_until="domcontentloaded"
+                )
+
                 html = page.content()
                 soup = BeautifulSoup(html, "html.parser")
                 car_data = soup.find_all("div", "d3-container d3-property__insight")
@@ -95,6 +122,7 @@ def get_details(base_url: str, links_list: list[tuple[str]]):
                     dat = e.get_text().split()
                     result = {}
                     i = 0
+                    # manejar casos donde los datos vienen con espacios como "Localización: Las Condes"
                     while i < len(dat):
                         key = dat[i]
                         if key in keys:
@@ -126,7 +154,7 @@ def save_to_json(
     car_dict_list: list[dict],
     links_list: list[tuple[str]],
     default_url: str,
-    output_path,
+    output_path="autos.json",
 ):
     parsed_cars = list()
     for i in range(len(car_dict_list)):
@@ -141,20 +169,24 @@ def save_to_json(
                 km=re.sub(r"[']", "", d["Kilómetros"]),
                 version="",
                 transmission=d["Transmisión"],
-                price_actual=int(re.sub(r"[\$\.]", "", d["Precio"].split()[0])),
-                price_original=-1,
+                priceActual=int(re.sub(r"[\$\.]", "", d["Precio"].split()[0])),
+                priceOriginal=int(
+                    re.sub(r"[\$\.]", "", d["Precio"].split()[0])
+                ),  # TO DO: obtener precio original desde la publicacion
                 location=d["Localización"],
-                fuel_type=d["Combustible"],
-                post_url=default_url + post_url,
-                img_url=img_url,
-                data_source="yapo",
-                published_at=datetime.strptime(d["Publicado"], "%d/%m/%Y").strftime(
-                    "%d/%m/%Y"
-                ),
-                scraped_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                fuelType=d["Combustible"],
+                postUrl=default_url + post_url,
+                imgUrl=img_url,
+                dataSource="yapo",
+                publishedAt=datetime.strptime(d["Publicado"], "%d/%m/%Y").isoformat()
+                + "Z",  # sin la Z la request falla
+                scrapedAt=datetime.now().isoformat() + "Z",
             )
             parsed_cars.append(car.model_dump())
         except KeyError:  # llave no encontrada
+            continue
+        except Exception as e:
+            print("Error guardando autos a json", e)
             continue
     current_dir = os.path.dirname(os.path.abspath(__file__))
     with open(os.path.join(current_dir, output_path), "w", encoding="utf-8") as f:
@@ -166,23 +198,37 @@ def main():
     try:
         base_url = "https://public-api.yapo.cl/autos-usados/region-metropolitana"
         default_url = "https://public-api.yapo.cl"
-
         n_pages = 1
-        i1 = time.time()
+        print("Número de paginas: ", n_pages)
+        start = time.time()
         links_list = scrape_yapo(base_url, n_pages)
-        i2 = time.time()
-        print("numero de paginas: ", n_pages)
-        print("tiempo de scrapeo por pagina: ", (i2 - i1) / n_pages)
-        i3 = time.time()
-        car_dict_list = get_details(default_url, links_list)
-        i4 = time.time()
+        end = time.time()
+        print("Tiempo de obtención de urls (por página): ", (end - start) / n_pages)
+
+        if links_list:
+            start = time.time()
+            car_dict_list = get_details(default_url, links_list)
+            end = time.time()
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            with open(
+                os.path.join(current_dir, "asd.json"), "w", encoding="utf-8"
+            ) as f:
+                f.write(json.dumps(car_dict_list))
+        else:
+            print("Error: lista de urls retorno vacía")
+            return
+
         print(
-            "tiempo de obtener detalles publicaciones por pagina: ", (i4 - i3) / n_pages
+            "Tiempo de obtención de detalles de publicaciones (por página): ",
+            (end - start) / n_pages,
         )
-        save_to_json(car_dict_list, links_list, default_url, "autos.json")
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        with open(os.path.join(current_dir, "asd.json"), "r", encoding="utf-8") as f:
+            car_dict_list = json.load(f)
+        save_to_json(car_dict_list, links_list, default_url)
 
     except Exception as e:
-        print(e)
+        print("Error: extracción de datos falló ->", e)
 
 
 if __name__ == "__main__":
