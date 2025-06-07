@@ -1,0 +1,27 @@
+name: Run fb_mkt scraper
+# este run es un placeholder, falta arreglar el scraper de fb
+# las variables de entorno cargan bien
+on:
+  workflow_dispatch:
+
+jobs:
+  run:
+    name: Run fb crawler
+    runs-on: ubuntu-latest
+    environment: production
+
+    env:
+      C_USER: ${{ secrets.C_USER }}
+      XS: ${{ secrets.XS }}
+      N_SCROLLS: ${{ vars.N_SCROLLS }}
+      T_SCROLL: ${{ vars.T_SCROLL }}
+      MIN_PRICE: ${{ vars.MIN_PRICE }}
+      
+      VERCEL_BACKEND_URL: ${{ secrets.VERCEL_BACKEND_URL }}
+      
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/install-env
+      - name: Execute script
+        run:  echo ""
+        # run: poetry run python3 ./src/scrapers/fb_scraper/main.py

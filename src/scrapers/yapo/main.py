@@ -9,8 +9,19 @@ from bs4 import BeautifulSoup
 from datetime import datetime
 from scrapers.models import Car
 import re
+from dotenv import dotenv_values
+from requests import post
+
+# Cargar el .env si existe
+env_config = {}
+if os.path.exists(".env"):
+    env_config = dotenv_values(".env")
+
+# Mezclar variables, dando prioridad a las del entorno
+config = {**env_config, **os.environ}
 
 retries = 3
+
 
 # obtener los pares de (post_url, img_url) para irlos explorando despues
 def scrape_yapo(base_url: str, pages: int):
@@ -190,41 +201,103 @@ def save_to_json(
     print(f"Se guardaron {len(parsed_cars)} en {output_path}")
 
 
+def post_cars(
+    car_dict_list: list[dict],
+    links_list: list[tuple[str]],
+    default_url: str,
+    output_path="autos.json",
+):
+    parsed_cars = list()
+    for i in range(len(car_dict_list)):
+        d = car_dict_list[i]
+        post_url = links_list[i][0]
+        img_url = links_list[i][1]
+        try:
+            car = Car(
+                brand=d["Marca"],
+                model=d["Modelo"],
+                year=int(d["Año"]),
+                km=re.sub(r"[']", "", d["Kilómetros"]),
+                version="",
+                transmission=d["Transmisión"],
+                priceActual=int(re.sub(r"[\$\.]", "", d["Precio"].split()[0])),
+                priceOriginal=int(
+                    re.sub(r"[\$\.]", "", d["Precio"].split()[0])
+                ),  # TO DO: obtener precio original desde la publicacion
+                location=d["Localización"],
+                fuelType=d["Combustible"],
+                postUrl=default_url + post_url,
+                imgUrl=img_url,
+                dataSource="yapo",
+                publishedAt=datetime.strptime(d["Publicado"], "%d/%m/%Y").isoformat()
+                + "Z",  # sin la Z la request falla
+                scrapedAt=datetime.now().isoformat() + "Z",
+            )
+            parsed_cars.append(car.model_dump())
+        except KeyError:  # llave no encontrada
+            continue
+        except Exception as e:
+            print("Error guardando autos a json", e)
+            continue
+    backend_url = config["VERCEL_BACKEND_URL"]
+    print("GUARD")
+    for car in parsed_cars:
+        post(url=backend_url, data=car)
+
+
 def main():
     try:
-        base_url = "https://public-api.yapo.cl/autos-usados/region-metropolitana"
-        default_url = "https://public-api.yapo.cl"
-        n_pages = 1
-        print("Número de paginas: ", n_pages)
-        start = time.time()
-        links_list = scrape_yapo(base_url, n_pages)
-        end = time.time()
-        print("Tiempo de obtención de urls (por página): ", (end - start) / n_pages)
+        # flujo original:
+        # base_url = "https://public-api.yapo.cl/autos-usados/region-metropolitana"
+        # default_url = "https://public-api.yapo.cl"
+        # n_pages = 1
+        # print("Número de paginas: ", n_pages)
+        # start = time.time()
+        # links_list = scrape_yapo(base_url, n_pages)
+        # end = time.time()
+        # print("Tiempo de obtención de urls (por página): ", (end - start) / n_pages)
 
-        if links_list:
-            start = time.time()
-            car_dict_list = get_details(default_url, links_list)
-            end = time.time()
-            current_dir = os.path.dirname(os.path.abspath(__file__))
-            with open(
-                os.path.join(current_dir, "asd.json"), "w", encoding="utf-8"
-            ) as f:
-                f.write(json.dumps(car_dict_list))
-        else:
-            print("Error: lista de urls retorno vacía")
-            return
+        # if links_list:
+        #     start = time.time()
+        #     car_dict_list = get_details(default_url, links_list)
+        #     end = time.time()
+        #     current_dir = os.path.dirname(os.path.abspath(__file__))
+        #     with open(
+        #         os.path.join(current_dir, "asd.json"), "w", encoding="utf-8"
+        #     ) as f:
+        #         f.write(json.dumps(car_dict_list))
+        # else:
+        #     print("Error: lista de urls retorno vacía")
+        #     return
 
-        print(
-            "Tiempo de obtención de detalles de publicaciones (por página): ",
-            (end - start) / n_pages,
-        )
+        # print(
+        #     "Tiempo de obtención de detalles de publicaciones (por página): ",
+        #     (end - start) / n_pages,
+        # )
+        # current_dir = os.path.dirname(os.path.abspath(__file__))
+        # with open(os.path.join(current_dir, "asd.json"), "r", encoding="utf-8") as f:
+        #     car_dict_list = json.load(f)
+        # save_to_json(car_dict_list, links_list, default_url)
+
+        # flujo test offline
+
+        links_list = [
+            [
+                "/autos-usados/2008/30724085",
+                "https://photos.encuentra24.com/t_or_fh_m/f_auto/v1/cl/30/72/40/85/30724085_b2effc",
+            ]
+        ]
         current_dir = os.path.dirname(os.path.abspath(__file__))
         with open(os.path.join(current_dir, "asd.json"), "r", encoding="utf-8") as f:
             car_dict_list = json.load(f)
-        save_to_json(car_dict_list, links_list, default_url)
+
+        backend_url = config["VERCEL_BACKEND_URL"]
+        print(backend_url)
+        post_cars(car_dict_list, links_list, backend_url)
 
     except Exception as e:
         print("Error: extracción de datos falló ->", e)
+
 
 if __name__ == "__main__":
     main()
