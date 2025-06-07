@@ -12,7 +12,6 @@ import re
 
 retries = 3
 
-
 # obtener los pares de (post_url, img_url) para irlos explorando despues
 def scrape_yapo(base_url: str, pages: int):
     car_listing_links = []
@@ -48,7 +47,6 @@ def scrape_yapo(base_url: str, pages: int):
             try:
                 myUrl = f"{base_url}.{page_number}"
                 page.goto(myUrl, timeout=10000, wait_until="domcontentloaded")
-
                 car_listing_class = "d3-ad-tile d3-ads-grid__item d3-ad-tile--fullwidth d3-ad-tile--bordered d3-ad-tile--feat d3-ad-tile--feat-plat"
                 car_list_locator = page.locator(f'div[class="{car_listing_class}"]')
                 links_locator = car_list_locator.locator(
@@ -66,7 +64,6 @@ def scrape_yapo(base_url: str, pages: int):
                 )
                 for url in links_list:
                     car_listing_links.append(tuple(url))
-
                 time.sleep(0.5)
             except Exception as e:
                 print(e)
@@ -110,7 +107,6 @@ def get_details(base_url: str, links_list: list[tuple[str]]):
                 page.goto(
                     base_url + post_url, timeout=10000, wait_until="domcontentloaded"
                 )
-
                 html = page.content()
                 soup = BeautifulSoup(html, "html.parser")
                 car_data = soup.find_all("div", "d3-container d3-property__insight")
@@ -229,7 +225,6 @@ def main():
 
     except Exception as e:
         print("Error: extracción de datos falló ->", e)
-
 
 if __name__ == "__main__":
     main()
