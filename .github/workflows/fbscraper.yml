@@ -11,11 +11,11 @@ jobs:
     environment: production
 
     env:
-      C_USER: ${{ secrets.C_USER }}
-      XS: ${{ secrets.XS }}
-      N_SCROLLS: ${{ vars.N_SCROLLS }}
-      T_SCROLL: ${{ vars.T_SCROLL }}
-      MIN_PRICE: ${{ vars.MIN_PRICE }}
+      C_USER: ${{ secrets.FB_C_USER }}
+      XS: ${{ secrets.FB_XS }}
+      N_SCROLLS: ${{ vars.FB_N_SCROLLS }}
+      T_SCROLL: ${{ vars.FB_T_SCROLL }}
+      MIN_PRICE: ${{ vars.FB_MIN_PRICE }}
       
       VERCEL_BACKEND_URL: ${{ secrets.VERCEL_BACKEND_URL }}
       
@@ -23,5 +23,4 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/install-env
       - name: Execute script
-        run:  echo ""
-        # run: poetry run python3 ./src/scrapers/fb_scraper/main.py
+        run: poetry run python3 ./src/scrapers/fb_scraper/main.py

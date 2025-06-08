@@ -22,14 +22,14 @@ def crawl_facebook_marketplace():
     # https://www.facebook.com/marketplace/santiagocl/carros
 
     initial_url = "https://www.facebook.com/marketplace/"
-    min_price = (
-        int(config["MIN_PRICE"]) or 100000
+    min_price = int(
+        config["FB_MIN_PRICE"]
     )  # mejor usar un precio minimo para descartar publicaciones raras
-    n_scrolls = int(config["N_SCROLLS"]) or 15
-    wait_between_scrolls = int(config["T_SCROLL"]) or 6
+    n_scrolls = int(config["FB_N_SCROLLS"])
+    wait_between_scrolls = int(config["FB_T_SCROLL"])
 
-    c_user = config["C_USER"]
-    xs = config["XS"]
+    c_user = config["FB_C_USER"]
+    xs = config["FB_XS"]
     cookie1 = {
         "name": "c_user",
         "value": c_user,
