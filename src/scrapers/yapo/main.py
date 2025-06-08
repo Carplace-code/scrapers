@@ -150,7 +150,7 @@ def get_details(base_url: str, links_list: list[tuple[str]], retries: int = 3):
                         attr_dict[e[0]] = " ".join(e[1 : len(e)])
                 dict_list.append(attr_dict)
                 time.sleep(1)
-            except Exception as e:
+            except Exception:
                 continue
         browser.close()
         return dict_list
@@ -187,7 +187,6 @@ def save_to_json(
             )
             parsed_cars.append(car.model_dump())
         except KeyError:  # llave no encontrada
-            # print(e)
             continue
         except Exception:
             continue
@@ -227,7 +226,6 @@ def post_cars(
             )
             parsed_cars.append(car.model_dump())
         except KeyError:  # llave no encontrada
-            # print(e)
             continue
         except Exception:
             continue
