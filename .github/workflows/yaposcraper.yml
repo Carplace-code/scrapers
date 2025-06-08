@@ -2,11 +2,19 @@ name: Run yapo scraper
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: "0 0 * * *"
 
 jobs:
   run:
     name: Run yapo scraper
     runs-on: ubuntu-latest
+    environment: production
+
+    env:
+      YP_N_PAGES: ${{ vars.YP_N_PAGES }}
+      VERCEL_BACKEND_URL: ${{ secrets.VERCEL_BACKEND_URL }}
+
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/install-env

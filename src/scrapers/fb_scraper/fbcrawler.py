@@ -3,12 +3,17 @@ from playwright.sync_api import sync_playwright
 from dotenv import dotenv_values
 from bs4 import BeautifulSoup
 import os
-import sys
 import time
 import json
 import re
 
-config = {**dotenv_values(".env"), **os.environ}
+# Cargar el .env si existe
+env_config = {}
+if os.path.exists(".env"):
+    env_config = dotenv_values(".env")
+
+# Mezclar variables, dando prioridad a las del entorno
+config = {**env_config, **os.environ}
 
 
 def crawl_facebook_marketplace():
@@ -17,14 +22,14 @@ def crawl_facebook_marketplace():
     # https://www.facebook.com/marketplace/santiagocl/carros
 
     initial_url = "https://www.facebook.com/marketplace/"
-    min_price = (
-        int(config["MIN_PRICE"]) or 100000
+    min_price = int(
+        config["FB_MIN_PRICE"]
     )  # mejor usar un precio minimo para descartar publicaciones raras
-    n_scrolls = int(config["N_SCROLLS"]) or 15
-    wait_between_scrolls = int(config["T_SCROLL"]) or 6
+    n_scrolls = int(config["FB_N_SCROLLS"])
+    wait_between_scrolls = int(config["FB_T_SCROLL"])
 
-    c_user = config["C_USER"]
-    xs = config["XS"]
+    c_user = config["FB_C_USER"]
+    xs = config["FB_XS"]
     cookie1 = {
         "name": "c_user",
         "value": c_user,
@@ -154,7 +159,7 @@ def save_to_json(data, output_file):
     print("Cantidad total de vehiculos (sin repetidos): ", len(parsed))
 
 
-if __name__ == "__main__":
+def main():
     current_dir = os.path.dirname(os.path.abspath(__file__))
     start = time.time()
     elements = crawl_facebook_marketplace(os.path.join(current_dir, "fb_sessions.txt"))
@@ -162,5 +167,10 @@ if __name__ == "__main__":
         f.write(json.dumps(elements))
     end = time.time()
     print("Tiempo total de scrapeo: ", end - start)
-    # save_to_json(elements, "cars.json") # TO DO: implementar una forma de conectar a la db
-    sys.exit(0)
+    save_to_json(
+        elements, "cars.json"
+    )  # TO DO: implementar una forma de conectar a la db
+
+
+if __name__ == "__main__":
+    main()

@@ -9,11 +9,20 @@ from bs4 import BeautifulSoup
 from datetime import datetime
 from scrapers.models import Car
 import re
+from dotenv import dotenv_values
+import requests
 
-retries = 3
+# Cargar el .env si existe
+env_config = {}
+if os.path.exists(".env"):
+    env_config = dotenv_values(".env")
+
+# Mezclar variables, dando prioridad a las del entorno
+config = {**env_config, **os.environ}
+
 
 # obtener los pares de (post_url, img_url) para irlos explorando despues
-def scrape_yapo(base_url: str, pages: int):
+def scrape_yapo(base_url: str, pages: int, retries: int = 3):
     car_listing_links = []
     with sync_playwright() as p:
         browser = p.chromium.launch(
@@ -41,7 +50,7 @@ def scrape_yapo(base_url: str, pages: int):
                 continue
             except Exception as e:
                 print(f"Error inesperado en el intento {attempt}: {e}")
-
+        time.sleep(2)
         for page_number in range(1, pages + 1):
             print(f"Cargando pagina {page_number}")
             try:
@@ -73,7 +82,7 @@ def scrape_yapo(base_url: str, pages: int):
 
 
 # ir a todas las publicaciones de a una para obtener todos los detalles
-def get_details(base_url: str, links_list: list[tuple[str]]):
+def get_details(base_url: str, links_list: list[tuple[str]], retries: int = 3):
     print("Obteniendo detalle de las publicaciones")
     with sync_playwright() as p:
         browser = p.chromium.launch(
@@ -97,13 +106,14 @@ def get_details(base_url: str, links_list: list[tuple[str]]):
                 continue
             except Exception as e:
                 print(f"Error inesperado en el intento {attempt}: {e}")
-
         time.sleep(2)
         dict_list = list()
         print(f"Cargando publicaciones ({len(links_list)} en total)")
         for post_url, img_url in links_list:
             try:
                 attr_dict = dict()
+                attr_dict["post_url"] = post_url
+                attr_dict["img_url"] = img_url
                 page.goto(
                     base_url + post_url, timeout=10000, wait_until="domcontentloaded"
                 )
@@ -140,7 +150,7 @@ def get_details(base_url: str, links_list: list[tuple[str]]):
                         attr_dict[e[0]] = " ".join(e[1 : len(e)])
                 dict_list.append(attr_dict)
                 time.sleep(1)
-            except Exception as e:
+            except Exception:
                 continue
         browser.close()
         return dict_list
@@ -148,15 +158,51 @@ def get_details(base_url: str, links_list: list[tuple[str]]):
 
 def save_to_json(
     car_dict_list: list[dict],
-    links_list: list[tuple[str]],
     default_url: str,
     output_path="autos.json",
 ):
     parsed_cars = list()
     for i in range(len(car_dict_list)):
         d = car_dict_list[i]
-        post_url = links_list[i][0]
-        img_url = links_list[i][1]
+        try:
+            car = Car(
+                brand=d["Marca"],
+                model=d["Modelo"],
+                year=int(d["Año"]),
+                km=re.sub(r"[']", "", d["Kilómetros"]),
+                version="",
+                transmission=d["Transmisión"],
+                priceActual=int(re.sub(r"[\$\.]", "", d["Precio"].split()[0])),
+                priceOriginal=int(
+                    re.sub(r"[\$\.]", "", d["Precio"].split()[0])
+                ),  # TO DO: obtener precio original desde la publicacion (por ahora deje que fuera el mismo que priceActual)
+                location=d["Localización"],
+                fuelType=d["Combustible"],
+                postUrl=default_url + d["post_url"],
+                imgUrl=d["img_url"],
+                dataSource="yapo",
+                publishedAt=datetime.strptime(d["Publicado"], "%d/%m/%Y").isoformat()
+                + "Z",  # sin la Z la request falla
+                scrapedAt=datetime.now().isoformat() + "Z",
+            )
+            parsed_cars.append(car.model_dump())
+        except KeyError:  # llave no encontrada
+            continue
+        except Exception:
+            continue
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    with open(os.path.join(current_dir, output_path), "w", encoding="utf-8") as f:
+        f.write(json.dumps(parsed_cars))
+    print(f"Se guardaron {len(parsed_cars)} en {output_path}")
+
+
+def post_cars(
+    car_dict_list: list[dict],
+    default_url: str,
+):
+    parsed_cars = list()
+    for i in range(len(car_dict_list)):
+        d = car_dict_list[i]
         try:
             car = Car(
                 brand=d["Marca"],
@@ -171,8 +217,8 @@ def save_to_json(
                 ),  # TO DO: obtener precio original desde la publicacion
                 location=d["Localización"],
                 fuelType=d["Combustible"],
-                postUrl=default_url + post_url,
-                imgUrl=img_url,
+                postUrl=default_url + d["post_url"],
+                imgUrl=d["img_url"],
                 dataSource="yapo",
                 publishedAt=datetime.strptime(d["Publicado"], "%d/%m/%Y").isoformat()
                 + "Z",  # sin la Z la request falla
@@ -181,20 +227,25 @@ def save_to_json(
             parsed_cars.append(car.model_dump())
         except KeyError:  # llave no encontrada
             continue
-        except Exception as e:
-            print("Error guardando autos a json", e)
+        except Exception:
             continue
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    with open(os.path.join(current_dir, output_path), "w", encoding="utf-8") as f:
-        f.write(json.dumps(parsed_cars))
-    print(f"Se guardaron {len(parsed_cars)} en {output_path}")
+    backend_url = config["VERCEL_BACKEND_URL"]
+    for car in parsed_cars:
+        try:
+            requests.post(backend_url, json=car)
+            # print(f"Status Code: {response.status_code}")
+            # print(f"Response Text: {response.text}")
+        except requests.exceptions.RequestException as e:
+            print(f"An error occurred: {e}")
+            continue
 
 
 def main():
     try:
+        # flujo original:
         base_url = "https://public-api.yapo.cl/autos-usados/region-metropolitana"
         default_url = "https://public-api.yapo.cl"
-        n_pages = 1
+        n_pages = int(config["YP_N_PAGES"])
         print("Número de paginas: ", n_pages)
         start = time.time()
         links_list = scrape_yapo(base_url, n_pages)
@@ -205,11 +256,6 @@ def main():
             start = time.time()
             car_dict_list = get_details(default_url, links_list)
             end = time.time()
-            current_dir = os.path.dirname(os.path.abspath(__file__))
-            with open(
-                os.path.join(current_dir, "asd.json"), "w", encoding="utf-8"
-            ) as f:
-                f.write(json.dumps(car_dict_list))
         else:
             print("Error: lista de urls retorno vacía")
             return
@@ -218,13 +264,30 @@ def main():
             "Tiempo de obtención de detalles de publicaciones (por página): ",
             (end - start) / n_pages,
         )
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        with open(os.path.join(current_dir, "asd.json"), "r", encoding="utf-8") as f:
-            car_dict_list = json.load(f)
-        save_to_json(car_dict_list, links_list, default_url)
+
+        post_cars(car_dict_list, default_url)
+
+        # flujo test offline
+
+        # default_url = "https://public-api.yapo.cl"
+        # current_dir = os.path.dirname(os.path.abspath(__file__))
+        # with open(os.path.join(current_dir, "asd.json"), "r", encoding="utf-8") as f:
+        #     car_dict_list = json.load(f)
+        # save_to_json(car_dict_list, default_url)
+        # post_cars(car_dict_list, default_url)
+
+        # ignorar (perdon esto lo guardo porque despues se me pierde)
+        # current_dir = os.path.dirname(os.path.abspath(__file__))
+        # with open(
+        #         os.path.join(current_dir, "asd.json"), "w", encoding="utf-8"
+        #     ) as f:
+        #         f.write(json.dumps(car_dict_list))
+        # with open(os.path.join(current_dir, "asd.json"), "r", encoding="utf-8") as f:
+        #     car_dict_list = json.load(f)
 
     except Exception as e:
         print("Error: extracción de datos falló ->", e)
+
 
 if __name__ == "__main__":
     main()
