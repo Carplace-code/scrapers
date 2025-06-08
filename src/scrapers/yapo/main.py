@@ -26,7 +26,7 @@ def scrape_yapo(base_url: str, pages: int, retries: int = 3):
     car_listing_links = []
     with sync_playwright() as p:
         browser = p.chromium.launch(
-            headless=False
+            headless=True
             # , proxy= {}
         )
         context = browser.new_context(
