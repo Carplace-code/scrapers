@@ -6,9 +6,33 @@ from pathlib import Path
 from datetime import datetime
 from playwright.sync_api import sync_playwright
 from scrapers.models import Car
+import requests
+
 
 DEVELOPMENT_MODE = False
 HEADLESS_MODE = True
+
+def post_cars_to_api(cars_data: list[Car], api_url: str, method: str = "POST") -> None:
+    for i, car in enumerate(cars_data, start=1):
+        payload = car.model_dump()
+        # Cambia fuelType a "other" si es None
+        if payload.get("fuelType") is None:
+            payload["fuelType"] = "other"
+        try:
+            if method.upper() == "POST":
+                response = requests.post(api_url, json=payload, timeout=10)
+            elif method.upper() == "PUT":
+                response = requests.put(api_url, json=payload, timeout=10)
+            else:
+                print(f"[{i}/{len(cars_data)}] Método HTTP no soportado: {method}")
+                continue
+
+            if response.status_code in (200, 201):
+                print(f"[{i}/{len(cars_data)}] Auto publicado correctamente: {car.brand} {car.model}")
+            else:
+                print(f"[{i}/{len(cars_data)}] Error {response.status_code} al publicar ({method} {api_url}): {response.text}")
+        except Exception as e:
+            print(f"[{i}/{len(cars_data)}] Excepción al publicar el auto: {e}")
 
 def parse_price(price_text: str) -> int | None:
     found_digits = re.findall(r"\d[\d.]*", price_text)
@@ -23,6 +47,43 @@ def save_to_json(cars_data: list[Car], filename: str = "autos.json") -> None:
         encoding="utf-8"
     )
     print(f"\nSe guardaron {len(cars_data)} autos en {filename}")
+
+# Enums para normalización
+class FuelTypeEnum:
+    GAS = "gas"
+    DIESEL = "diesel"
+    ELECTRICITY = "electricity"
+    HYBRID = "hybrid"
+    OTHER = "other"
+
+class TransmissionTypeEnum:
+    AUTOMATIC = "automatic"
+    MANUAL = "manual"
+    OTHER = "other"
+
+def normalize_fuel_type(raw_fuel: str | None) -> str | None:
+    if not raw_fuel:
+        return None
+    raw = raw_fuel.lower()
+    if "bencina" in raw or "gasolina" in raw or "gas" in raw:
+        return FuelTypeEnum.GAS
+    if "diesel" in raw:
+        return FuelTypeEnum.DIESEL
+    if "eléctrico" in raw or "electric" in raw:
+        return FuelTypeEnum.ELECTRICITY
+    if "híbrido" in raw or "hybrid" in raw:
+        return FuelTypeEnum.HYBRID
+    return FuelTypeEnum.OTHER
+
+def normalize_transmission(raw_trans: str | None) -> str:
+    if not raw_trans:
+        return TransmissionTypeEnum.OTHER
+    raw = raw_trans.lower()
+    if "automático" in raw or "automatic" in raw:
+        return TransmissionTypeEnum.AUTOMATIC
+    if "manual" in raw:
+        return TransmissionTypeEnum.MANUAL
+    return TransmissionTypeEnum.OTHER
 
 def extract_cars_from_dom(page) -> list[Car]:
     extracted_cars = []
@@ -39,9 +100,20 @@ def extract_cars_from_dom(page) -> list[Car]:
     
     for car_card in car_cards:
         try:
-            car_url = car_card.get_attribute("href")
-            if car_url and not car_url.startswith(('http://', 'https://')):
-                car_url = f"https://www.kavak.com{car_url}"
+            href = car_card.get_attribute("href")
+            data_testid = car_card.get_attribute("data-testid")
+            car_url = None
+            if href:
+                if not href.startswith(('http://', 'https://')):
+                    href = f"https://www.kavak.com{href}"
+                car_id = None
+                if data_testid and data_testid.startswith("card-product-"):
+                    car_id = data_testid.replace("card-product-", "")
+                if car_id:
+                    sep = "&" if "?" in href else "?"
+                    car_url = f"{href}{sep}id={car_id}"
+                else:
+                    car_url = href
             
             image_element = car_card.query_selector("img")
             car_image_url = image_element.get_attribute("src") if image_element else None
@@ -102,17 +174,20 @@ def extract_cars_from_dom(page) -> list[Car]:
             location_element = car_card.query_selector("span[class*='card-product_cardProduct__footerInfo__']")
             car_location = location_element.inner_text().strip() if location_element else "Desconocido"
             
+            normalized_transmission = normalize_transmission(car_transmission)
+            normalized_fuel = normalize_fuel_type(None)
+
             car_data = Car(
                 brand=car_brand,
                 model=car_model,
                 year=car_year,
                 km=car_km,
                 version=car_version,
-                transmission=car_transmission,
+                transmission=normalized_transmission,
                 priceActual=current_price,
                 priceOriginal=original_price,
                 location=car_location,
-                fuelType=None,
+                fuelType=normalized_fuel,
                 postUrl=car_url,
                 imgUrl=car_image_url,
                 dataSource="kavak",
@@ -243,6 +318,9 @@ def main():
         print(f"{car.brand} {car.model} - {car.priceActual:,} CLP - URL: {car.postUrl}")
 
     save_to_json(collected_cars)
+
+    API_URL = "https://carplace-git-schema-changes-carplaces-projects.vercel.app/api/cars"
+    post_cars_to_api(collected_cars, API_URL, method="POST")
 
 if __name__ == "__main__":
     main()
