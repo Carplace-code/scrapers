@@ -11,6 +11,8 @@ from scrapers.models import Car
 import re
 from dotenv import dotenv_values
 import requests
+from scrapers.utils import normalize_fuel_type, normalize_transmission
+
 
 # Cargar el .env si existe
 env_config = {}
@@ -22,12 +24,12 @@ config = {**env_config, **os.environ}
 
 
 # obtener los pares de (post_url, img_url) para irlos explorando despues
-def scrape_yapo(base_url: str, pages: int, retries: int = 3):
+def scrape_yapo(pages: int, base_url: str = config["YP_BASE_URL"], retries: int = 3):
     car_listing_links = []
     with sync_playwright() as p:
         browser = p.chromium.launch(
-            headless=True
-            # , proxy= {}
+            headless=True,
+            # proxy= {},
         )
         context = browser.new_context(
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36",
@@ -51,6 +53,7 @@ def scrape_yapo(base_url: str, pages: int, retries: int = 3):
             except Exception as e:
                 print(f"Error inesperado en el intento {attempt}: {e}")
         time.sleep(2)
+        # TO DO: tal vez recorrer las páginas en orden aleatorio para ser mas representativo
         for page_number in range(1, pages + 1):
             print(f"Cargando pagina {page_number}")
             try:
@@ -81,8 +84,12 @@ def scrape_yapo(base_url: str, pages: int, retries: int = 3):
         return car_listing_links
 
 
-# ir a todas las publicaciones de a una para obtener todos los detalles
-def get_details(base_url: str, links_list: list[tuple[str]], retries: int = 3):
+# ir a todas las publicaciones de a una para obtener todos los detalles y guardarlos en un diccionario
+def get_details(
+    links_list: list[tuple[str]],
+    base_url: str = config["YP_BASE_URL"],
+    retries: int = 3,
+):
     print("Obteniendo detalle de las publicaciones")
     with sync_playwright() as p:
         browser = p.chromium.launch(
@@ -123,7 +130,7 @@ def get_details(base_url: str, links_list: list[tuple[str]], retries: int = 3):
                 car_desc = soup.find_all("div", "d3-property-details__detail-label")
 
                 # datos del auto
-                keys = "Marca Modelo Precio Año Kilómetros Combustible".split(" ")
+                keys = ["Marca", "Modelo", "Precio", "Año", "Kilómetros", "Combustible"]
                 for e in car_data:
                     dat = e.get_text().split()
                     result = {}
@@ -158,86 +165,164 @@ def get_details(base_url: str, links_list: list[tuple[str]], retries: int = 3):
 
 def save_to_json(
     car_dict_list: list[dict],
-    default_url: str,
+    default_url: str = config["YP_DEFAULT_URL"],
     output_path="autos.json",
 ):
+    # formato de datos del input
+    # input_fuels = ["Bencina", "Diesel", "Otros", "Híbrido", "Gas", "Eléctrico"]
+    # input_transmissions = ["Manual", "Automática", "Otros", "5+"]
+
     parsed_cars = list()
     for i in range(len(car_dict_list)):
-        d = car_dict_list[i]
         try:
-            car = Car(
-                brand=d["Marca"],
-                model=d["Modelo"],
-                year=int(d["Año"]),
-                km=re.sub(r"[']", "", d["Kilómetros"]),
-                version="",
-                transmission=d["Transmisión"],
-                priceActual=int(re.sub(r"[\$\.]", "", d["Precio"].split()[0])),
-                priceOriginal=int(
-                    re.sub(r"[\$\.]", "", d["Precio"].split()[0])
-                ),  # TO DO: obtener precio original desde la publicacion (por ahora deje que fuera el mismo que priceActual)
-                location=d["Localización"],
-                fuelType=d["Combustible"],
-                postUrl=default_url + d["post_url"],
-                imgUrl=d["img_url"],
-                dataSource="yapo",
-                publishedAt=datetime.strptime(d["Publicado"], "%d/%m/%Y").isoformat()
-                + "Z",  # sin la Z la request falla
-                scrapedAt=datetime.now().isoformat() + "Z",
-            )
-            parsed_cars.append(car.model_dump())
-        except KeyError:  # llave no encontrada
-            continue
-        except Exception:
-            continue
+            parsed_cars.append(dump_car(car_dict_list[i], default_url))
+        except Exception as e:
+            return e
     current_dir = os.path.dirname(os.path.abspath(__file__))
     with open(os.path.join(current_dir, output_path), "w", encoding="utf-8") as f:
         f.write(json.dumps(parsed_cars))
     print(f"Se guardaron {len(parsed_cars)} en {output_path}")
 
 
-def post_cars(
-    car_dict_list: list[dict],
-    default_url: str,
+# convertir un diccionario de atributos de auto a un json
+def dump_car(
+    car_dict: dict,
+    default_url: str = config["YP_DEFAULT_URL"],
 ):
-    parsed_cars = list()
-    for i in range(len(car_dict_list)):
-        d = car_dict_list[i]
-        try:
-            car = Car(
-                brand=d["Marca"],
-                model=d["Modelo"],
-                year=int(d["Año"]),
-                km=re.sub(r"[']", "", d["Kilómetros"]),
-                version="",
-                transmission=d["Transmisión"],
-                priceActual=int(re.sub(r"[\$\.]", "", d["Precio"].split()[0])),
-                priceOriginal=int(
-                    re.sub(r"[\$\.]", "", d["Precio"].split()[0])
-                ),  # TO DO: obtener precio original desde la publicacion
-                location=d["Localización"],
-                fuelType=d["Combustible"],
-                postUrl=default_url + d["post_url"],
-                imgUrl=d["img_url"],
-                dataSource="yapo",
-                publishedAt=datetime.strptime(d["Publicado"], "%d/%m/%Y").isoformat()
-                + "Z",  # sin la Z la request falla
-                scrapedAt=datetime.now().isoformat() + "Z",
-            )
-            parsed_cars.append(car.model_dump())
-        except KeyError:  # llave no encontrada
-            continue
-        except Exception:
-            continue
-    backend_url = config["VERCEL_BACKEND_URL"]
-    for car in parsed_cars:
-        try:
-            requests.post(backend_url, json=car)
+    d = car_dict
+    fuel_type = normalize_fuel_type(d["Combustible"])
+    transmission_type = normalize_transmission(d["Transmisión"])
+    try:
+        car = Car(
+            brand=d["Marca"],
+            model=d["Modelo"],
+            year=int(d["Año"]),
+            km=re.sub(r"[']", "", d["Kilómetros"]),
+            version="",
+            transmission=transmission_type,
+            priceActual=int(re.sub(r"[\$\.]", "", d["Precio"].split()[0])),
+            priceOriginal=int(
+                re.sub(r"[\$\.]", "", d["Precio"].split()[0])
+            ),  # TO DO: obtener precio original desde la publicacion
+            location=d["Localización"],
+            fuelType=fuel_type,
+            postUrl=default_url + d["post_url"],
+            imgUrl=d["img_url"],
+            dataSource="yapo",
+            publishedAt=datetime.strptime(d["Publicado"], "%d/%m/%Y").isoformat()
+            + "Z",  # sin la Z la request falla
+            scrapedAt=datetime.now().isoformat() + "Z",
+        )
+        car = car.model_dump()
+        return car
+    except KeyError or requests.exceptions.RequestException as e:  # llave no encontrada
+        print(f"Ocurrió un error: {e}")
+        return None
+
+
+def post_car(car_dict: dict, backend_url=config["VERCEL_BACKEND_URL"]):
+    try:
+        car = dump_car(car_dict)
+        if car:
+            response = requests.post(backend_url, json=car)
             # print(f"Status Code: {response.status_code}")
             # print(f"Response Text: {response.text}")
-        except requests.exceptions.RequestException as e:
-            print(f"An error occurred: {e}")
-            continue
+            return response
+        else:
+            return None
+    except Exception as e:
+        raise requests.exceptions.RequestException(
+            f"No se pudo postear el auto a la db: {e}"
+        )
+
+
+def post_cars(car_dict_list: list[dict]):
+    for car in car_dict_list:
+        try:
+            post_car(car)
+            # print(f"Status Code: {response.status_code}")
+            # print(f"Response Text: {response.text}")
+        except Exception as e:
+            print(f"Ocurrió un error: {e}")
+
+
+# ir a todas las publicaciones de a una para obtener todos los detalles y postearlos direcot en la db
+def get_and_post_details(
+    links_list: list[tuple[str]],
+    base_url: str = config["YP_BASE_URL"],
+    retries: int = 3,
+):
+    print("Obteniendo detalle de las publicaciones")
+    with sync_playwright() as p:
+        browser = p.chromium.launch(
+            headless=True,
+            # proxy= {}
+        )
+        context = browser.new_context(
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36",
+            viewport={"width": 1366, "height": 768},
+            locale="es-ES",
+            permissions=[],
+        )
+        page = context.new_page()
+        print(f"Conectandose a {base_url}")
+        for attempt in range(retries):
+            try:
+                page.goto(base_url, wait_until="domcontentloaded")
+                break
+            except PlaywrightTimeoutError:
+                print(f"Intento {attempt}/{retries} de conectar a la url falló")
+                continue
+            except Exception as e:
+                print(f"Error inesperado en el intento {attempt}: {e}")
+        time.sleep(2)
+        dict_list = list()
+        print(f"Cargando publicaciones ({len(links_list)} en total)")
+        for post_url, img_url in links_list:
+            try:
+                attr_dict = dict()
+                attr_dict["post_url"] = post_url
+                attr_dict["img_url"] = img_url
+                page.goto(
+                    base_url + post_url, timeout=10000, wait_until="domcontentloaded"
+                )
+                html = page.content()
+                soup = BeautifulSoup(html, "html.parser")
+                car_data = soup.find_all("div", "d3-container d3-property__insight")
+                car_desc = soup.find_all("div", "d3-property-details__detail-label")
+
+                # datos del auto
+                keys = ["Marca", "Modelo", "Precio", "Año", "Kilómetros", "Combustible"]
+                for e in car_data:
+                    dat = e.get_text().split()
+                    result = {}
+                    i = 0
+                    # manejar casos donde los datos vienen con espacios como "Localización: Las Condes"
+                    while i < len(dat):
+                        key = dat[i]
+                        if key in keys:
+                            i += 1
+                            value_parts = []
+                            while i < len(dat) and dat[i] not in keys:
+                                value_parts.append(dat[i])
+                                i += 1
+                            result[key] = " ".join(value_parts)
+                        else:
+                            i += 1
+                    attr_dict.update(result)
+
+                # datos adicionales en la descripción del auto
+                labels = ["Publicado", "Localización", "Transmisión"]
+                for e in car_desc:
+                    e = e.get_text().split()
+                    if e[0] in labels and len(e) > 1:
+                        attr_dict[e[0]] = " ".join(e[1 : len(e)])
+                dict_list.append(attr_dict)
+                time.sleep(1)
+            except Exception:
+                continue
+        browser.close()
+        return dict_list
 
 
 def main():
