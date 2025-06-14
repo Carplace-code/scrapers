@@ -13,6 +13,8 @@ jobs:
 
     env:
       YP_N_PAGES: ${{ vars.YP_N_PAGES }}
+      YP_BASE_URL: ${{ vars.YP_BASE_URL }}
+      YP_DEFAULT_URL: ${{ vars.YP_DEFAULT_URL }}
       VERCEL_BACKEND_URL: ${{ secrets.VERCEL_BACKEND_URL }}
 
     steps:
