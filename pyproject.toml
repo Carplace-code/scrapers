@@ -26,8 +26,9 @@ packages = [
 ]
 
 [tool.poetry.scripts]
-yapo-scrap = "scrapers.yapo.main:main"  # Cambiado el nombre para evitar conflictos
-kavak-scrap = "scrapers.kavak.main:main" 
+kavak-scrap = "scrapers.kavak.main:main"   # Cambiado el nombre para evitar conflictos
+yapo-scrap = "scrapers.yapo.main:main"
+fb-scrap = "scrapers.fb_mkt.main:main" 
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]

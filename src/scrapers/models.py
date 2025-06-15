@@ -17,4 +17,3 @@ class Car(BaseModel):
     dataSource: str
     publishedAt: str | None
     scrapedAt: str | None
-
