@@ -1,4 +1,4 @@
-name: Run Scraper
+name: Run Kavak Scraper
 
 on:
   workflow_dispatch:
@@ -8,6 +8,11 @@ on:
 jobs:
   run-scraper:
     runs-on: ubuntu-latest
+    environment: scraper_env
+
+    env:
+      KVK_N_PAGES: ${{ vars.KVK_N_PAGES }}
+      BACKEND_URL: ${{ secrets.BACKEND_URL }}
 
     steps:
       - name: Checkout repository

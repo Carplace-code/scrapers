@@ -9,21 +9,15 @@ from bs4 import BeautifulSoup
 from datetime import datetime
 from scrapers.models import Car
 import re
-from dotenv import dotenv_values
 import requests
-from scrapers.utils import normalize_fuel_type, normalize_transmission
+from scrapers.utils import normalize_fuel_type, normalize_transmission, load_env
 
 
-# Cargar el .env si existe
-env_config = {}
-if os.path.exists(".env"):
-    env_config = dotenv_values(".env")
+config = load_env()
 
-# Mezclar variables, dando prioridad a las del entorno
-config = {**env_config, **os.environ}
-
-DEFAULT_URL = str(config["YP_DEFAULT_URL"])
-BASE_URL = str(config["YP_BASE_URL"])
+DEFAULT_URL = "https://public-api.yapo.cl"
+BASE_URL = "https://public-api.yapo.cl/autos-usados/region-metropolitana"
+BACKEND_URL = str(config["BACKEND_URL"])
 
 
 # obtener los pares de (post_url, img_url) para irlos explorando despues
@@ -138,7 +132,7 @@ def save_to_json(
     print(f"Se guardaron {len(parsed_cars)} en {output_path}")
 
 
-def post_car(car_dict: dict, backend_url=str(config["VERCEL_BACKEND_URL"])):
+def post_car(car_dict: dict, backend_url=BACKEND_URL):
     try:
         car = dump_car(car_dict)
         if car:
@@ -253,6 +247,7 @@ def main():
             "Tiempo de obtención de detalles de publicaciones (por página): ",
             (end - start) / n_pages,
         )
+
         current_dir = os.path.dirname(os.path.abspath(__file__))
         with open(
             os.path.join(current_dir, "car_dict_list.json"), "w", encoding="utf-8"

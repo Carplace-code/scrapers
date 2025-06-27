@@ -1,3 +1,15 @@
+from dotenv import dotenv_values
+import os
+
+
+def load_env():
+    env_config = {}
+    if os.path.exists(".env"):
+        env_config = dotenv_values(".env")
+    config = {**env_config, **os.environ}
+    return config
+
+
 # Enums para normalización
 class FuelTypeEnum:
     GAS = "gas"
