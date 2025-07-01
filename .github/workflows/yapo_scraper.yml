@@ -1,4 +1,4 @@
-name: Run yapo scraper
+name: Run Yapo Scraper
 
 on:
   workflow_dispatch:
@@ -7,15 +7,13 @@ on:
 
 jobs:
   run:
-    name: Run yapo scraper
+    name: Run Yapo Scraper
     runs-on: ubuntu-latest
     environment: production
 
     env:
       YP_N_PAGES: ${{ vars.YP_N_PAGES }}
-      YP_BASE_URL: ${{ vars.YP_BASE_URL }}
-      YP_DEFAULT_URL: ${{ vars.YP_DEFAULT_URL }}
-      VERCEL_BACKEND_URL: ${{ secrets.VERCEL_BACKEND_URL }}
+      BACKEND_URL: ${{ secrets.BACKEND_URL }}
 
     steps:
       - uses: actions/checkout@v4
