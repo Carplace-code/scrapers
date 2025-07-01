@@ -12,6 +12,8 @@ jobs:
 
     env:
       KVK_N_PAGES: ${{ vars.KVK_N_PAGES }}
+      PROXY_USER: ${{ secrets.PROXY_USER }}
+      PROXY_PASS: ${{ secrets.PROXY_PASS }}
       BACKEND_URL: ${{ secrets.BACKEND_URL }}
 
     steps:
