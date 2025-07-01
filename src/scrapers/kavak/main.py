@@ -1,7 +1,6 @@
 import re
 import json
 import time
-import random
 from pathlib import Path
 from datetime import datetime
 from playwright.sync_api import sync_playwright
@@ -17,6 +16,8 @@ BACKEND_URL = str(config["BACKEND_URL"])
 KVK_N_PAGES = int(
     config["KVK_N_PAGES"]
 )  # parametro opcional, si es 0 en config se usan todas las paginas
+PROXY_USER = str(config["PROXY_USER"])
+PROXY_PASS = str(config["PROXY_PASS"])
 
 
 def post_cars_to_api(cars_data: list[Car], api_url: str, method: str = "POST") -> None:
@@ -44,6 +45,7 @@ def post_cars_to_api(cars_data: list[Car], api_url: str, method: str = "POST") -
                 )
         except Exception as e:
             print(f"[{i}/{len(cars_data)}] Excepción al publicar el auto: {e}")
+            continue
 
 
 def parse_price(price_text: str) -> int | None:
@@ -330,12 +332,11 @@ def pause_for_inspection(
 
 def main():
     collected_cars = []
-    session_id = random.randint(1000, 9999)
 
     proxy_config = {
         "server": "http://brd.superproxy.io:33335",
-        "username": f"brd-customer-hl_59fd91ff-zone-residential_proxy1-session-{session_id}",
-        "password": "fmj7cpmf7i9p",
+        "username": PROXY_USER,
+        "password": PROXY_PASS,
     }
 
     with sync_playwright() as playwright:
@@ -343,6 +344,8 @@ def main():
             browser_page, browser = robust_scraper_attempt(playwright, proxy_config)
             total_page_count = get_total_pages(browser_page)
             print(f"Total de páginas detectadas: {total_page_count}")
+            if KVK_N_PAGES > 0:
+                print(f"Número de páginas a scrapear: {KVK_N_PAGES}")
 
             pause_for_inspection(
                 browser_page,
@@ -352,9 +355,7 @@ def main():
             print("Error crítico:", error)
             return
 
-        for page_number in range(
-            KVK_N_PAGES or total_page_count
-        ):  # Cambiar por `range(total_page_count)` si deseas scrapear todas
+        for page_number in range(KVK_N_PAGES or total_page_count):
             try:
                 print(f"Scrapeando página {page_number}...")
                 page_url = f"https://www.kavak.com/cl/usados?page={page_number}"
@@ -372,6 +373,7 @@ def main():
                 )
 
                 page_cars = extract_cars_from_dom(browser_page)
+                post_cars_to_api(page_cars, BACKEND_URL, method="POST")
                 collected_cars.extend(page_cars)
                 print(
                     f"Se extrajeron {len(page_cars)} autos de la página {page_number}"
@@ -391,9 +393,6 @@ def main():
         print(f"{car.brand} {car.model} - {car.priceActual:,} CLP - URL: {car.postUrl}")
 
     save_to_json(collected_cars)
-
-    API_URL = BACKEND_URL
-    post_cars_to_api(collected_cars, API_URL, method="POST")
 
 
 if __name__ == "__main__":
