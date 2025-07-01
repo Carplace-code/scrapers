@@ -8,7 +8,7 @@ on:
 jobs:
   run-scraper:
     runs-on: ubuntu-latest
-    environment: scraper_env
+    environment: production
 
     env:
       KVK_N_PAGES: ${{ vars.KVK_N_PAGES }}

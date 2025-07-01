@@ -9,7 +9,7 @@ jobs:
   run:
     name: Run Yapo Scraper
     runs-on: ubuntu-latest
-    environment: scraper_env
+    environment: production
 
     env:
       YP_N_PAGES: ${{ vars.YP_N_PAGES }}
