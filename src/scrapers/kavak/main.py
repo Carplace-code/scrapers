@@ -290,7 +290,7 @@ def robust_scraper_attempt(playwright, proxy_settings, max_retries=3):
         try:
             browser_instance = playwright.chromium.launch(
                 headless=HEADLESS_MODE,
-                # proxy=proxy_settings,
+                proxy=proxy_settings,
                 args=["--ignore-certificate-errors"],
             )
             browser_page = browser_instance.new_page(
