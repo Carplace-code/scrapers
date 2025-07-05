@@ -21,8 +21,8 @@ config = load_env()
 
 DEFAULT_URL = "https://public-api.yapo.cl"
 BASE_URL = "https://public-api.yapo.cl/autos-usados/region-metropolitana"
+N_PAGES = int(config["YP_N_PAGES"])
 BACKEND_URL = str(config["BACKEND_URL"])
-N_PAGES = int(config["N_PAGES"])
 
 
 # Convert a dictionary of data extracted from Yapo to a json following the Car model format
@@ -50,8 +50,7 @@ def convert_yapo_data_to_json(
             publishedAt=datetime.strptime(d["Publicado"], "%d/%m/%Y").isoformat() + "Z",
             scrapedAt=datetime.now().isoformat() + "Z",
         )
-        car = car.model_dump()
-        return car
+        return car.model_dump()
     except KeyError or requests.exceptions.RequestException:
         return None
 
@@ -78,19 +77,20 @@ def get_links(n_pages: int, retries: int = 3):
         for attempt in range(retries):
             try:
                 page.goto(BASE_URL, wait_until="domcontentloaded")
-                print(f"Conectandose a {BASE_URL}")
+                print(f"Connecting to {BASE_URL}")
                 break
             except PlaywrightTimeoutError:
-                print(f"Intento {attempt}/{retries} de conectar a la url falló")
+                print(f"Attempt {attempt}/{retries} to connect to the URL failed")
                 continue
             except Exception as e:
-                raise Exception(f"Error (scrape_yapo) -> in attempt {attempt}) : {e}")
+                raise Exception(f"(get_links) Error -> in attempt {attempt}) : {e}")
         time.sleep(2)
-        print(f"Cargando páginas ({n_pages}) en total")
+        print(f"Loading pages ({n_pages}) in total")
         for page_number in range(1, n_pages + 1):
+            print(f"Loading page {page_number}")
             try:
-                myUrl = f"{BASE_URL}.{page_number}"
-                page.goto(myUrl, timeout=10000, wait_until="domcontentloaded")
+                page_url = f"{BASE_URL}.{page_number}"
+                page.goto(page_url, timeout=10000, wait_until="domcontentloaded")
                 car_listing_class = "d3-ad-tile d3-ads-grid__item d3-ad-tile--fullwidth d3-ad-tile--bordered d3-ad-tile--feat d3-ad-tile--feat-plat"
                 car_list_locator = page.locator(f'div[class="{car_listing_class}"]')
                 links_locator = car_list_locator.locator(
@@ -106,10 +106,12 @@ def get_links(n_pages: int, retries: int = 3):
                         return [href, imgSrc];
                         })"""
                 )
+                print(f"Retrieved {len(links_list)} links from page {page_number}")
                 for url in links_list:
                     car_listing_links.append(tuple(url))
                 time.sleep(0.5)
             except Exception:
+                print(f"Error loading/processing page {page_number}")
                 continue
         browser.close()
         return car_listing_links
@@ -123,7 +125,7 @@ def scrape_and_post(
     print("Scraping publications details")
     with sync_playwright() as p:
         browser = p.chromium.launch(
-            headless=True,
+            headless=False,
             # proxy= {}
         )
         context = browser.new_context(
@@ -133,20 +135,24 @@ def scrape_and_post(
             permissions=[],
         )
         page = context.new_page()
-        print(f"Conectandose a {BASE_URL}")
+        print(f"Connecting to {BASE_URL}")
         for attempt in range(retries):
             try:
                 page.goto(BASE_URL, wait_until="domcontentloaded")
                 break
             except PlaywrightTimeoutError:
-                print(f"Intento {attempt}/{retries} de conectar a la url falló")
+                print(f"Attempt {attempt}/{retries} to connect to the URL failed")
                 continue
             except Exception as e:
-                raise Exception(f"Error (get_details) -> in attempt {attempt}) : {e}")
+                raise Exception(
+                    f"Error (scrape_and_post) -> in attempt {attempt}) : {e}"
+                )
         time.sleep(2)
         car_list = list()
         print(f"Loading publications ({len(links_list)} in total)")
+        count = 1
         for post_url, img_url in links_list:
+            input()
             try:
                 attr_dict = dict()
                 attr_dict["post_url"] = post_url
@@ -185,18 +191,21 @@ def scrape_and_post(
                     if e[0] in labels and len(e) > 1:
                         attr_dict[e[0]] = " ".join(e[1 : len(e)])
                 car = convert_yapo_data_to_json(attr_dict)
-                post_car(car, backend_url=BACKEND_URL)
+                post_car(car, count, len(links_list), backend_url=BACKEND_URL)
                 car_list.append(car)
+                count += 1
                 time.sleep(1)
-            except Exception:
+            except Exception as e:
+                print(e)
                 continue
         browser.close()
+        print(f"Sent {count} publications in total")
         return car_list
 
 
 def main():
     try:
-        print("Pages to scrape: ", N_PAGES)
+        print("Amount of pages to scrape: ", N_PAGES)
         start = time.time()
         links_list = get_links(N_PAGES)
         end = time.time()

@@ -63,20 +63,22 @@ def save_to_json(cars_data: list[Car], filename: str = "cars.json") -> None:
     print(f"\nSuccesfully saved {len(cars_data)} cars in {filename}")
 
 
-def post_car(car: Car, backend_url):
+def post_car(car: Car, count: int, total_amount: int, backend_url):
     try:
         if car:
-            response = requests.post(backend_url, json=car, timeout=10)
-            # print(f"Status Code: {response.status_code}")
-            # print(f"Response Text: {response.text}")
+            response = requests.post(backend_url, json=car, timeout=15)
             if response.status_code in (200, 201):
-                print(f"Auto publicado correctamente: {car.brand} {car.model}")
+                print(
+                    f"{count}/{total_amount} Car published successfully: {car['brand']} {car['model']}"
+                )
             else:
-                print(f"Error {response.status_code} al publicar : {response.text}")
+                raise Exception(
+                    f"(post_car) Error {response.status_code} publishing car: {response.text}"
+                )
             return response
         else:
             return None
     except requests.exceptions.RequestException:
         raise requests.exceptions.RequestException()
     except Exception as e:
-        raise Exception(f"Error (post_car): {e}")
+        raise Exception(f"(post_car) Error : {e}")

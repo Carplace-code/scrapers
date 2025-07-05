@@ -21,21 +21,13 @@ PROXY_USER = str(config["PROXY_USER"])
 PROXY_PASS = str(config["PROXY_PASS"])
 
 
-def post_cars_to_api(cars_data: list[Car], api_url: str, method: str = "POST") -> None:
+def post_cars_to_api(cars_data: list[Car], backend_url) -> None:
     for i, car in enumerate(cars_data, start=1):
         car = car.model_dump()
         try:
-            response = post_car(car, backend_url=BACKEND_URL)
-            if response.status_code in (200, 201):
-                print(
-                    f"[{i}/{len(cars_data)}] Auto publicado correctamente: {car.brand} {car.model}"
-                )
-            else:
-                print(
-                    f"[{i}/{len(cars_data)}] Error {response.status_code} al publicar ({method} {api_url}): {response.text}"
-                )
+            post_car(car, i, len(cars_data), backend_url)
         except Exception as e:
-            print(f"[{i}/{len(cars_data)}] Excepción al publicar el auto: {e}")
+            print(f"[{i}/{len(cars_data)}] Exception publishing car: {e}")
             continue
 
 
@@ -191,7 +183,7 @@ def extract_cars_from_dom(page) -> list[Car]:
             )
             extracted_cars.append(car_data)
             print(
-                f"Auto extraído: {car_brand} {car_model} ({car_year}) - Precio: ${current_price:,} - URL: {car_url}"
+                f"Car extracted: {car_brand} {car_model} ({car_year}) - Price: ${current_price:,} - URL: {car_url}"
             )
 
         except Exception as error:
@@ -221,20 +213,20 @@ def get_number_of_pages(page) -> int:
             if page_numbers:
                 return max(page_numbers)
     except Exception as error:
-        print("Error al obtener el número total de páginas:", error)
+        print("Error getting the total number of pages:", error)
         page.screenshot(path="error_get_total_pages.png")
 
     return 1
 
 
-# Try to load the main page and return the browser instance
+# Try to load the main page and then return the browser instance
 def load_main_page(playwright, proxy_settings, max_retries=3):
     for attempt_number in range(1, max_retries + 1):
-        print(f"\n[Intento {attempt_number}/{max_retries}] usando proxy...")
+        print(f"\n[Attempt {attempt_number}/{max_retries}] using proxy...")
         try:
             browser_instance = playwright.chromium.launch(
                 headless=HEADLESS_MODE,
-                # proxy=proxy_settings,
+                proxy=proxy_settings,
                 args=["--ignore-certificate-errors"],
             )
             browser_page = browser_instance.new_page(
@@ -253,7 +245,7 @@ def load_main_page(playwright, proxy_settings, max_retries=3):
             page_content = browser_page.content().lower()
 
             if "request could not be satisfied" in page_content:
-                print("Página bloqueada, reintentando...")
+                print("Request blocked, retrying...")
                 browser_page.screenshot(path=f"bloqueo_intento_{attempt_number}.png")
                 browser_instance.close()
                 continue
@@ -261,14 +253,14 @@ def load_main_page(playwright, proxy_settings, max_retries=3):
             return browser_page, browser_instance
 
         except Exception as error:
-            print(f"Error al cargar la página (intento {attempt_number}):", error)
+            print(f"Error loading page (attempt {attempt_number}):", error)
 
-    raise RuntimeError("No se pudo acceder al sitio tras múltiples intentos.")
+    raise RuntimeError("The site could not be accessed after multiple attempts.")
 
 
-# Functions for testing purposes
+# Function for testing purposes
 def pause_for_inspection(
-    page, message="Scraper pausado. Presiona Enter en la consola para continuar..."
+    page, message="Scraper paused. Press Enter in the console to continue..."
 ):
     if DEVELOPMENT_MODE:
         print(message)
@@ -319,7 +311,7 @@ def main():
                 )
 
                 page_cars = extract_cars_from_dom(browser_page)
-                post_cars_to_api(page_cars, BACKEND_URL, method="POST")
+                post_cars_to_api(page_cars, BACKEND_URL)
                 collected_cars.extend(page_cars)
                 print(f"{len(page_cars)} cars were extracted from page {page_number}")
 
@@ -333,8 +325,8 @@ def main():
         )
         browser.close()
 
-    for car in collected_cars:
-        print(f"{car.brand} {car.model} - {car.priceActual:,} CLP - URL: {car.postUrl}")
+    # for car in collected_cars:
+    #     print(f"{car.brand} {car.model} - {car.priceActual:,} CLP - URL: {car.postUrl}")
 
     save_to_json(collected_cars)
 
