@@ -72,9 +72,7 @@ def post_car(car: Car, count: int, total_amount: int, backend_url):
                     f"{count}/{total_amount} Car published successfully: {car['brand']} {car['model']}"
                 )
             else:
-                raise Exception(
-                    f"(post_car) Error {response.status_code} publishing car: {response.text}"
-                )
+                raise Exception(f"{response.status_code} status code: {response.text}")
             return response
         else:
             return None

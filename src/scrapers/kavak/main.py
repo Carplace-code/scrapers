@@ -278,11 +278,14 @@ def main():
 
     with sync_playwright() as playwright:
         try:
+            if N_PAGES < 0:
+                raise Exception("Invalid number of pages")
             browser_page, browser = load_main_page(playwright, proxy_config)
             total_page_count = get_number_of_pages(browser_page)
             print(f"Detected {total_page_count} pages")
-            if N_PAGES > 0:
-                print(f"Number of pages to scrape: {N_PAGES}")
+            print(
+                f"Number of pages to scrape: {N_PAGES if (N_PAGES > 0) else total_page_count}"
+            )
 
             pause_for_inspection(
                 browser_page,
@@ -328,7 +331,7 @@ def main():
     # for car in collected_cars:
     #     print(f"{car.brand} {car.model} - {car.priceActual:,} CLP - URL: {car.postUrl}")
 
-    save_to_json(collected_cars)
+    save_to_json(collected_cars, filename="kavak.json")
 
 
 if __name__ == "__main__":

@@ -57,6 +57,7 @@ def convert_yapo_data_to_json(
 
 # Explore the main page of used cars to get (post_url, img_url) pairs to be explored
 def get_links(n_pages: int, retries: int = 3):
+    print("Number of pages to scrape: ", N_PAGES)
     car_listing_links = []
     with sync_playwright() as p:
         browser = p.chromium.launch(
@@ -125,7 +126,7 @@ def scrape_and_post(
     print("Scraping publications details")
     with sync_playwright() as p:
         browser = p.chromium.launch(
-            headless=False,
+            headless=True,
             # proxy= {}
         )
         context = browser.new_context(
@@ -152,7 +153,6 @@ def scrape_and_post(
         print(f"Loading publications ({len(links_list)} in total)")
         count = 1
         for post_url, img_url in links_list:
-            input()
             try:
                 attr_dict = dict()
                 attr_dict["post_url"] = post_url
@@ -205,7 +205,6 @@ def scrape_and_post(
 
 def main():
     try:
-        print("Amount of pages to scrape: ", N_PAGES)
         start = time.time()
         links_list = get_links(N_PAGES)
         end = time.time()
@@ -223,7 +222,7 @@ def main():
             "Time of scraping (per page): ",
             (end - start) / N_PAGES,
         )
-        save_to_json(car_list)
+        save_to_json(car_list, filename="yapo.json")
 
     except Exception as e:
         print(" ->", e)
