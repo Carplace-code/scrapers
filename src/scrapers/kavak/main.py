@@ -1,50 +1,33 @@
 import re
-import json
 import time
-from pathlib import Path
 from datetime import datetime
 from playwright.sync_api import sync_playwright
 from scrapers.models import Car
-from scrapers.utils import load_env
-import requests
+from scrapers.utils import (
+    load_env,
+    normalize_fuel_type,
+    normalize_transmission,
+    save_to_json,
+    post_car,
+)
 
 config = load_env()
 
 DEVELOPMENT_MODE = False
 HEADLESS_MODE = True
 BACKEND_URL = str(config["BACKEND_URL"])
-KVK_N_PAGES = int(
-    config["KVK_N_PAGES"]
-)  # parametro opcional, si es 0 en config se usan todas las paginas
+N_PAGES = int(config["KVK_N_PAGES"])  # optional, 0 if you want ot get all kavak pages
 PROXY_USER = str(config["PROXY_USER"])
 PROXY_PASS = str(config["PROXY_PASS"])
 
 
-def post_cars_to_api(cars_data: list[Car], api_url: str, method: str = "POST") -> None:
+def post_cars_to_api(cars_data: list[Car], backend_url) -> None:
     for i, car in enumerate(cars_data, start=1):
-        payload = car.model_dump()
-        # Cambia fuelType a "other" si es None
-        if payload.get("fuelType") is None:
-            payload["fuelType"] = "other"
+        car = car.model_dump()
         try:
-            if method.upper() == "POST":
-                response = requests.post(api_url, json=payload, timeout=10)
-            elif method.upper() == "PUT":
-                response = requests.put(api_url, json=payload, timeout=10)
-            else:
-                print(f"[{i}/{len(cars_data)}] Método HTTP no soportado: {method}")
-                continue
-
-            if response.status_code in (200, 201):
-                print(
-                    f"[{i}/{len(cars_data)}] Auto publicado correctamente: {car.brand} {car.model}"
-                )
-            else:
-                print(
-                    f"[{i}/{len(cars_data)}] Error {response.status_code} al publicar ({method} {api_url}): {response.text}"
-                )
+            post_car(car, i, len(cars_data), backend_url)
         except Exception as e:
-            print(f"[{i}/{len(cars_data)}] Excepción al publicar el auto: {e}")
+            print(f"[{i}/{len(cars_data)}] Exception publishing car: {e}")
             continue
 
 
@@ -53,55 +36,6 @@ def parse_price(price_text: str) -> int | None:
     if found_digits:
         return int(found_digits[0].replace(".", ""))
     return None
-
-
-def save_to_json(cars_data: list[Car], filename: str = "autos.json") -> None:
-    json_data = [car.model_dump() for car in cars_data]
-    Path(filename).write_text(
-        json.dumps(json_data, indent=4, ensure_ascii=False), encoding="utf-8"
-    )
-    print(f"\nSe guardaron {len(cars_data)} autos en {filename}")
-
-
-# Enums para normalización
-class FuelTypeEnum:
-    GAS = "gas"
-    DIESEL = "diesel"
-    ELECTRICITY = "electricity"
-    HYBRID = "hybrid"
-    OTHER = "other"
-
-
-class TransmissionTypeEnum:
-    AUTOMATIC = "automatic"
-    MANUAL = "manual"
-    OTHER = "other"
-
-
-def normalize_fuel_type(raw_fuel: str | None) -> str | None:
-    if not raw_fuel:
-        return None
-    raw = raw_fuel.lower()
-    if "bencina" in raw or "gasolina" in raw or "gas" in raw:
-        return FuelTypeEnum.GAS
-    if "diesel" in raw:
-        return FuelTypeEnum.DIESEL
-    if "eléctrico" in raw or "electric" in raw:
-        return FuelTypeEnum.ELECTRICITY
-    if "híbrido" in raw or "hybrid" in raw:
-        return FuelTypeEnum.HYBRID
-    return FuelTypeEnum.OTHER
-
-
-def normalize_transmission(raw_trans: str | None) -> str:
-    if not raw_trans:
-        return TransmissionTypeEnum.OTHER
-    raw = raw_trans.lower()
-    if "automático" in raw or "automatic" in raw:
-        return TransmissionTypeEnum.AUTOMATIC
-    if "manual" in raw:
-        return TransmissionTypeEnum.MANUAL
-    return TransmissionTypeEnum.OTHER
 
 
 def extract_cars_from_dom(page) -> list[Car]:
@@ -249,7 +183,7 @@ def extract_cars_from_dom(page) -> list[Car]:
             )
             extracted_cars.append(car_data)
             print(
-                f"Auto extraído: {car_brand} {car_model} ({car_year}) - Precio: ${current_price:,} - URL: {car_url}"
+                f"Car extracted: {car_brand} {car_model} ({car_year}) - Price: ${current_price:,} - URL: {car_url}"
             )
 
         except Exception as error:
@@ -261,7 +195,8 @@ def extract_cars_from_dom(page) -> list[Car]:
     return extracted_cars
 
 
-def get_total_pages(page) -> int:
+# Get number of pages available to scrape
+def get_number_of_pages(page) -> int:
     try:
         page.wait_for_selector(".results_results__pagination__yZaD_", timeout=100000)
         pagination_element = page.query_selector(".results_results__pagination__yZaD_")
@@ -278,15 +213,16 @@ def get_total_pages(page) -> int:
             if page_numbers:
                 return max(page_numbers)
     except Exception as error:
-        print("Error al obtener el número total de páginas:", error)
+        print("Error getting the total number of pages:", error)
         page.screenshot(path="error_get_total_pages.png")
 
     return 1
 
 
-def robust_scraper_attempt(playwright, proxy_settings, max_retries=3):
+# Try to load the main page and then return the browser instance
+def load_main_page(playwright, proxy_settings, max_retries=3):
     for attempt_number in range(1, max_retries + 1):
-        print(f"\n[Intento {attempt_number}/{max_retries}] usando proxy...")
+        print(f"\n[Attempt {attempt_number}/{max_retries}] using proxy...")
         try:
             browser_instance = playwright.chromium.launch(
                 headless=HEADLESS_MODE,
@@ -309,7 +245,7 @@ def robust_scraper_attempt(playwright, proxy_settings, max_retries=3):
             page_content = browser_page.content().lower()
 
             if "request could not be satisfied" in page_content:
-                print("Página bloqueada, reintentando...")
+                print("Request blocked, retrying...")
                 browser_page.screenshot(path=f"bloqueo_intento_{attempt_number}.png")
                 browser_instance.close()
                 continue
@@ -317,13 +253,14 @@ def robust_scraper_attempt(playwright, proxy_settings, max_retries=3):
             return browser_page, browser_instance
 
         except Exception as error:
-            print(f"Error al cargar la página (intento {attempt_number}):", error)
+            print(f"Error loading page (attempt {attempt_number}):", error)
 
-    raise RuntimeError("No se pudo acceder al sitio tras múltiples intentos.")
+    raise RuntimeError("The site could not be accessed after multiple attempts.")
 
 
+# Function for testing purposes
 def pause_for_inspection(
-    page, message="Scraper pausado. Presiona Enter en la consola para continuar..."
+    page, message="Scraper paused. Press Enter in the console to continue..."
 ):
     if DEVELOPMENT_MODE:
         print(message)
@@ -341,23 +278,27 @@ def main():
 
     with sync_playwright() as playwright:
         try:
-            browser_page, browser = robust_scraper_attempt(playwright, proxy_config)
-            total_page_count = get_total_pages(browser_page)
-            print(f"Total de páginas detectadas: {total_page_count}")
-            if KVK_N_PAGES > 0:
-                print(f"Número de páginas a scrapear: {KVK_N_PAGES}")
+            if N_PAGES < 0:
+                raise Exception("Invalid number of pages")
+            browser_page, browser = load_main_page(playwright, proxy_config)
+            total_page_count = get_number_of_pages(browser_page)
+            print(f"Detected {total_page_count} pages")
+            print(
+                f"Number of pages to scrape: {N_PAGES if (N_PAGES > 0) else total_page_count}"
+            )
 
             pause_for_inspection(
                 browser_page,
-                "Primera página cargada. Inspecciona el contenido y presiona Enter para continuar...",
+                "First page loaded. Inspect the content and press Enter to continue....",
             )
         except Exception as error:
-            print("Error crítico:", error)
+            print("Error:", error)
             return
 
-        for page_number in range(KVK_N_PAGES or total_page_count):
+        # Explore pages one by one
+        for page_number in range(N_PAGES or total_page_count):
             try:
-                print(f"Scrapeando página {page_number}...")
+                print(f"Scraping page {page_number}...")
                 page_url = f"https://www.kavak.com/cl/usados?page={page_number}"
                 browser_page.goto(page_url, timeout=120000)
 
@@ -369,30 +310,28 @@ def main():
 
                 pause_for_inspection(
                     browser_page,
-                    f"Página {page_number} cargada. Inspecciona el contenido y presiona Enter para continuar...",
+                    f"Page {page_number} loaded. Inspect the contents and press Enter to continue...",
                 )
 
                 page_cars = extract_cars_from_dom(browser_page)
-                post_cars_to_api(page_cars, BACKEND_URL, method="POST")
+                post_cars_to_api(page_cars, BACKEND_URL)
                 collected_cars.extend(page_cars)
-                print(
-                    f"Se extrajeron {len(page_cars)} autos de la página {page_number}"
-                )
+                print(f"{len(page_cars)} cars were extracted from page {page_number}")
 
             except Exception as error:
-                print(f"Error al procesar la página {page_number}:", error)
+                print(f"Error processing page {page_number}:", error)
                 browser_page.screenshot(path=f"error_page_{page_number}.png")
 
         pause_for_inspection(
             browser_page,
-            "Scraping completado. Presiona Enter para cerrar el navegador...",
+            "Scraping completed. Press Enter to close the browser...",
         )
         browser.close()
 
-    for car in collected_cars:
-        print(f"{car.brand} {car.model} - {car.priceActual:,} CLP - URL: {car.postUrl}")
+    # for car in collected_cars:
+    #     print(f"{car.brand} {car.model} - {car.priceActual:,} CLP - URL: {car.postUrl}")
 
-    save_to_json(collected_cars)
+    save_to_json(collected_cars, filename="kavak.json")
 
 
 if __name__ == "__main__":
